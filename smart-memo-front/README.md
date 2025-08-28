@@ -1,12 +1,71 @@
-# React + Vite
+# Smart Memo 应用项目思路
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+本项目是一个基于 React 的备忘录应用，其核心设计理念遵循了组件化和单向数据流的原则，并体现了数据驱动视图 (Data-Driven View) 的思想。
 
-Currently, two official plugins are available:
+## 核心组件及其职责
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### `App.jsx` (顶层容器)
 
-## Expanding the ESLint configuration
+`App.jsx` 作为应用的顶层容器，承担着管理全局状态、数据持久化和核心业务逻辑的重任。它维护了以下关键状态变量：
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- `memos`: 存储所有的备忘录列表。
+- `editingMemo`: 当前正在编辑的备忘录对象，用于表单的填充和编辑操作。
+- `searchTerm`: 用户输入的搜索文本，用于过滤备忘录列表。
+
+为了操作这些变量，`App.jsx` 中设计了一系列函数，例如添加、删除、编辑备忘录，以及处理搜索逻辑等。通过将这些操作函数作为 props 传递给子组件，实现了状态的自上而下流动和统一管理。
+
+### `MemoForm.jsx` (备忘录表单组件)
+
+`MemoForm.jsx` 负责备忘录的创建和编辑功能。它内部维护了以下用于表单输入的局部状态变量：
+
+- `title`: 备忘录的标题文本。
+- `content`: 备忘录的内容文本。
+
+`MemoForm.jsx` 也设计了操作这些变量的函数，例如处理输入变化、提交表单等。这些函数通常会调用从 `App.jsx` 传递下来的回调函数，将表单数据传递回父组件进行处理和状态更新。
+
+### 其他 `.jsx` 组件
+
+项目中其他 `.jsx` 组件（例如用于展示备忘录列表项的组件）主要负责 UI 的展示，它们通常不维护自身的状态变量，而是通过 props 接收来自父组件的数据，并根据这些数据渲染视图。这种设计使得这些展示型组件更加纯粹和可复用。
+
+## 设计模式与理念
+
+这种将状态管理和核心逻辑集中在顶层组件 (`App.jsx`)，而将数据和操作通过 props 传递给子组件的设计模式，是 React 应用中非常常见和推荐的做法。它带来了以下优势：
+
+- **组件化**: 将应用拆分为独立的、可复用的组件，提高了代码的可维护性和可读性。
+- **单向数据流**: 数据从父组件流向子组件，使得数据流向清晰可预测，便于调试和理解应用的行为。
+- **数据驱动视图**: 视图是数据的直接反映。当数据发生变化时，React 会自动更新相关的视图，开发者无需手动操作 DOM。
+- **状态集中管理**: 重要的应用状态集中在少数几个顶层组件中，便于统一管理和数据持久化（例如通过 `localStorage` 实现）。
+
+总而言之，本项目的架构通过清晰的职责划分和遵循 React 的核心原则，构建了一个高效、可维护且易于扩展的备忘录应用。
+
+## 项目结构
+
+```
+smart-memo-front/
+├── public/
+├── src/
+│   ├── components/
+│   │   ├── MemoForm.jsx
+│   │   ├── MemoItem.jsx
+│   │   ├── MemoList.jsx
+│   │   └── ...
+│   ├── App.jsx
+│   ├── index.jsx
+│   └── ...
+├── .gitignore
+├── package.json
+├── README.md
+└── ...
+```
+
+## 安装依赖
+
+```bash
+npm install
+```
+
+## 运行项目
+
+```bash
+npm run dev
+```
