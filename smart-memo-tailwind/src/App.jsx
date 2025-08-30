@@ -45,8 +45,8 @@ function App() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-100 font-sans">
-      <header className="bg-gray-800 p-6 shadow-md">
+    <div className="min-h-screen bg-gray-50 font-sans">
+      <header className="bg-blue-400 p-1 shadow-md">
         <h1 className="text-3xl font-bold text-white text-center">📝 Smart Memo</h1>
       </header>
       <main className="max-w-4xl mx-auto p-4 md:p-6">

@@ -2,7 +2,7 @@
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,jsx,ts,tsx}", // 恢复扫描 src 目录
+    "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {},
