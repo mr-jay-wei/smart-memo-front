@@ -1,16 +1,19 @@
 {
-  "name": "smart-memo-tailwind",
+  "name": "smart-memo-desktop",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run dev:vite\"",
-    "dev:vite": "vite",
+    "start": "concurrently \"npm run server\" \"npm run dev\"",
     "dev": "vite",
-    "server": "node backend/server.js",
+    "server": "node backend/server.cjs",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "vite",
+    "electron:build": "vite build && electron-builder",
+    "app:dev": "wait-on tcp:5173 && electron ."
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -24,12 +27,33 @@
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.17",
     "concurrently": "^9.2.1",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.4.1",
-    "vite": "^4.5.2"
+    "vite": "^4.5.2",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.smartmemo.app",
+    "productName": "Smart Memo",
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist_electron"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    }
   }
 }

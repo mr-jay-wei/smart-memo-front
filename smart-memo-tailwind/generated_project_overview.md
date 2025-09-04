@@ -8,6 +8,9 @@
 smart-memo-tailwind/
 ├── backend
 │   └── server.js
+├── electron
+│   ├── main.js
+│   └── preload.js
 ├── frontend
 │   ├── assets
 │   ├── components
@@ -85,6 +88,97 @@ app.listen(PORT, () => {
 
 ```
 
+## `electron/main.js`
+
+```javascript
+// electron/main.js
+import { app, BrowserWindow, ipcMain } from "electron";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// 获取当前文件的目录名
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// 获取项目版本号的逻辑
+import fs from "fs";
+const pkg = JSON.parse(
+  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8")
+);
+const appVersion = pkg.version;
+
+function createWindow() {
+  // 创建浏览器窗口
+  const win = new BrowserWindow({
+    width: 1024,
+    height: 768,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+    },
+  });
+
+  // --- 主要修改在这里 ---
+  // 我们直接指定 Vite 开发服务器的地址
+  // wait-on 脚本保证了此时 http://localhost:5173 已经可用
+  const devUrl = "http://localhost:5173";
+
+  // 判断是开发环境还是生产环境
+  // process.defaultApp 是一个在开发时（通过 `electron .` 启动）为 true 的标志
+  const isDev = process.defaultApp;
+
+  if (isDev) {
+    // 开发环境下，加载 Vite 开发服务器的 URL
+    win.loadURL(devUrl);
+    // 自动打开开发者工具，方便调试
+    win.webContents.openDevTools();
+  } else {
+    // 生产环境下，加载打包好的 index.html 文件
+    win.loadFile(path.join(__dirname, "../dist/index.html"));
+  }
+
+  // (可选) 移除顶部的菜单栏，让应用更像一个原生App
+  win.setMenu(null);
+}
+
+// Electron 应用准备就绪后，创建窗口
+app.whenReady().then(createWindow);
+
+// 当所有窗口都关闭时退出应用
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
+});
+
+// 在 macOS 上，当点击 dock 图标并且没有其他窗口打开时，重新创建一个窗口
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+// IPC 通信部分保持不变
+ipcMain.handle("get-version", () => {
+  console.log("主进程收到了渲染进程的请求，正在返回版本号...");
+  return appVersion;
+});
+
+```
+
+## `electron/preload.js`
+
+```javascript
+// electron/preload.js
+import { contextBridge, ipcRenderer } from "electron";
+// 在 window 对象上暴露一个安全的 api
+// 这样你的 React 应用就可以通过 window.api.getVersion() 来调用
+contextBridge.exposeInMainWorld("api", {
+  // 定义一个 getVersion 函数，它会触发我们刚刚在 main.js 中定义的 'get-version' 事件
+  getVersion: () => ipcRenderer.invoke("get-version"),
+});
+
+```
+
 ## `eslint.config.js`
 
 ```javascript
@@ -132,17 +226,38 @@ function App() {
   const [memos, setMemos] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingMemo, setEditingMemo] = useState(null);
-  const [version, setVersion] = useState(null); // 👈 新增
+  const [version, setVersion] = useState("加载中...");
   const isMounted = useRef(false);
 
   useEffect(() => {
+    // 👇 这是主要改动！
+    // 不再使用 fetch，而是调用 preload 脚本暴露的 API
+    const getVersionFromElectron = async () => {
+      // 检查 api 是否存在，这样代码在普通浏览器中也不会报错
+      if (window.api && typeof window.api.getVersion === "function") {
+        try {
+          const appVersion = await window.api.getVersion();
+          setVersion(appVersion);
+        } catch (error) {
+          console.error("获取版本号失败:", error);
+          setVersion("获取失败");
+        }
+      } else {
+        // 如果不在 Electron 环境中，可以给一个提示
+        setVersion("非桌面版");
+      }
+    };
+
+    getVersionFromElectron();
+
+    // 下面的逻辑保持不变
     if (!isMounted.current) {
       isMounted.current = true;
       try {
         const savedMemos = localStorage.getItem("smart-memos");
         if (savedMemos) setMemos(JSON.parse(savedMemos));
       } catch (error) {
-        console.error("Failed to load memos:", error);
+        console.error("加载备忘录失败:", error);
       }
     }
   }, []);
@@ -152,6 +267,8 @@ function App() {
       localStorage.setItem("smart-memos", JSON.stringify(memos));
     }
   }, [memos]);
+
+  // ... App.jsx 中其他的函数 (handleFormSubmit, deleteMemo 等) 保持不变 ...
 
   const handleFormSubmit = (memoData) => {
     if (editingMemo) {
@@ -186,17 +303,6 @@ function App() {
       (memo.content?.toLowerCase() || "").includes(searchTerm.toLowerCase())
   );
 
-  // 👇 新增：调用后端 API
-  const fetchVersion = async () => {
-    try {
-      const res = await fetch("/api/version");
-      const data = await res.json();
-      setVersion(data.version);
-    } catch (err) {
-      console.error("Failed to fetch version:", err);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       <header className="bg-blue-400 p-1 shadow-md">
@@ -205,16 +311,8 @@ function App() {
         </h1>
       </header>
       <main className="max-w-4xl mx-auto p-4 md:p-6">
-        <div className="mb-6 flex gap-4 items-center">
-          <button
-            onClick={fetchVersion}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-          >
-            获取项目版本
-          </button>
-          {version && (
-            <span className="text-gray-700">当前版本：{version}</span>
-          )}
+        <div className="mb-6 text-sm text-gray-500">
+          <span>当前版本：{version}</span>
         </div>
 
         <MemoForm
@@ -386,7 +484,7 @@ createRoot(document.getElementById("root")).render(
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
+    <title>📝 Smart Memo</title>
   </head>
   <body>
     <div id="root"></div>
@@ -400,16 +498,21 @@ createRoot(document.getElementById("root")).render(
 
 ```json
 {
-  "name": "smart-memo-tailwind",
+  "name": "smart-memo-desktop",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "main": "electron/main.js",
   "type": "module",
   "scripts": {
+    "start": "concurrently \"npm run server\" \"npm run dev\"",
     "dev": "vite",
     "server": "node backend/server.js",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "vite",
+    "electron:build": "vite build && electron-builder",
+    "app:dev": "wait-on tcp:5173 && electron ."
   },
   "dependencies": {
     "express": "^4.19.2",
@@ -422,13 +525,35 @@ createRoot(document.getElementById("root")).render(
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.17",
+    "concurrently": "^9.2.1",
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.33.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.3.0",
     "postcss": "^8.4.31",
     "tailwindcss": "^3.4.1",
-    "vite": "^4.5.2"
+    "vite": "^4.5.2",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.smartmemo.app",
+    "productName": "Smart Memo",
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets",
+      "output": "dist_electron"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    }
   }
 }
 
@@ -487,10 +612,8 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
-  server: {
-    proxy: {
-      "/api": "http://localhost:5000",
-    },
+  define: {
+    "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV),
   },
   resolve: {
     alias: {

@@ -4,10 +4,8 @@ import path from "path";
 
 export default defineConfig({
   plugins: [react()],
-  server: {
-    proxy: {
-      "/api": "http://localhost:5000",
-    },
+  define: {
+    "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV),
   },
   resolve: {
     alias: {

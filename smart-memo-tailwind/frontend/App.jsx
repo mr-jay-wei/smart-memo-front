@@ -7,9 +7,11 @@ function App() {
   const [memos, setMemos] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingMemo, setEditingMemo] = useState(null);
-  const [version, setVersion] = useState(null); // 👈 新增
+  // 1. 初始状态设为 null，表示还没有获取版本号
+  const [version, setVersion] = useState(null);
   const isMounted = useRef(false);
 
+  // 这个 useEffect 现在只负责从 localStorage 加载备忘录，职责更单一
   useEffect(() => {
     if (!isMounted.current) {
       isMounted.current = true;
@@ -17,7 +19,7 @@ function App() {
         const savedMemos = localStorage.getItem("smart-memos");
         if (savedMemos) setMemos(JSON.parse(savedMemos));
       } catch (error) {
-        console.error("Failed to load memos:", error);
+        console.error("加载备忘录失败:", error);
       }
     }
   }, []);
@@ -28,6 +30,24 @@ function App() {
     }
   }, [memos]);
 
+  // 2. 创建一个专门用于处理按钮点击的函数
+  const handleFetchVersion = async () => {
+    // 3. 把获取版本的逻辑从 useEffect 移动到这里
+    if (window.api && typeof window.api.getVersion === "function") {
+      try {
+        setVersion("加载中..."); // 可以在点击后给一个即时反馈
+        const appVersion = await window.api.getVersion();
+        setVersion(appVersion);
+      } catch (error) {
+        console.error("获取版本号失败:", error);
+        setVersion("获取失败");
+      }
+    } else {
+      setVersion("非桌面版");
+    }
+  };
+
+  // ... App.jsx 中其他的函数 (handleFormSubmit, deleteMemo 等) 保持不变 ...
   const handleFormSubmit = (memoData) => {
     if (editingMemo) {
       setMemos(
@@ -46,7 +66,6 @@ function App() {
       setMemos([newMemo, ...memos]);
     }
   };
-
   const deleteMemo = (id) => setMemos(memos.filter((memo) => memo.id !== id));
   const toggleImportant = (id) =>
     setMemos(
@@ -54,23 +73,11 @@ function App() {
         memo.id === id ? { ...memo, isImportant: !memo.isImportant } : memo
       )
     );
-
   const filteredMemos = memos.filter(
     (memo) =>
       (memo.title?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
       (memo.content?.toLowerCase() || "").includes(searchTerm.toLowerCase())
   );
-
-  // 👇 新增：调用后端 API
-  const fetchVersion = async () => {
-    try {
-      const res = await fetch("/api/version");
-      const data = await res.json();
-      setVersion(data.version);
-    } catch (err) {
-      console.error("Failed to fetch version:", err);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -80,13 +87,15 @@ function App() {
         </h1>
       </header>
       <main className="max-w-4xl mx-auto p-4 md:p-6">
+        {/* 4. 重新添加按钮，并添加条件渲染来显示版本号 */}
         <div className="mb-6 flex gap-4 items-center">
           <button
-            onClick={fetchVersion}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+            onClick={handleFetchVersion}
+            className="px-4 py-2 bg-green-600 text-white font-semibold rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition"
           >
             获取项目版本
           </button>
+          {/* 这个语法的意思是：当 version 有值 (不为 null) 时，才渲染后面的 <span> */}
           {version && (
             <span className="text-gray-700">当前版本：{version}</span>
           )}
