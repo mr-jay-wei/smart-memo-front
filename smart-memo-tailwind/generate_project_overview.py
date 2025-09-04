@@ -15,6 +15,8 @@ IGNORE_PATTERNS: Set[str] = {
     ".git", ".vscode", ".idea", "__pycache__", "node_modules", "venv", ".venv",
     ".env", "build", "dist", "*.pyc", "*.egg-info", "*.log",
     # UV 和数据相关文件/文件夹
+    "dist_electron",
+    "dist_electron/*",
     "uv.lock", "data", "my_chromadb_vector_store", "*/.pytest_cache", 
     # 特定路径忽略
     "*/package-lock.json","package-lock.json","out/*",
@@ -58,35 +60,47 @@ class ProjectDocumenter:
 
     def _should_ignore(self, path: Path) -> bool:
         """
-        【已验证的正确逻辑】判断给定的路径是否应该被忽略。
+        判断路径是否应该被忽略。
+        规则：
+        1. 普通忽略列表的目录/文件仍然忽略
+        2. 通配符规则仍然生效
+        3. 只有位于源码目录（electron、backend、frontend）下的 .cjs 文件才放行
         """
         try:
             relative_path = path.relative_to(self.root_path)
             relative_parts = relative_path.parts
             relative_path_str = relative_path.as_posix()
         except ValueError:
-            return True # 不在项目根目录下
+            return True  # 不在项目根目录下
 
-        if not relative_parts: # 根目录自身不应被忽略
-             return False
+        if not relative_parts:
+            return False  # 根目录不忽略
 
-        # 1. 检查完整的相对路径是否在忽略列表中（如 frontend/uv.lock）
+        # 定义源码目录
+        SOURCE_DIRS = {"electron", "backend", "frontend"}
+
+        # 1. 检查完整路径是否在 plain_patterns 中
         if relative_path_str in self.plain_patterns:
             return True
 
-        # 2. 检查路径的任何部分是否是需要忽略的目录名（如 .git）
+        # 2. 检查路径任何部分是否在 plain_patterns 中
         if any(part in self.plain_patterns for part in relative_parts):
+            # 放行源码目录下的 .cjs 文件
+            if path.is_file() and path.suffix.lower() == ".cjs" and relative_parts[0] in SOURCE_DIRS:
+                return False
             return True
 
-        # 3. 检查文件名是否匹配通配符（如 *.log）
+        # 3. 检查文件名是否匹配通配符
         if any(fnmatch.fnmatch(path.name, pattern) for pattern in self.wildcard_patterns):
             return True
 
-        # 4. 检查完整路径是否匹配通配符（如 */package-lock.json）
+        # 4. 检查完整路径是否匹配通配符
         if any(fnmatch.fnmatch(relative_path_str, pattern) for pattern in self.wildcard_patterns):
             return True
 
+        # 5. 默认不过滤
         return False
+
 
     def get_filtered_paths(self) -> List[Path]:
         """

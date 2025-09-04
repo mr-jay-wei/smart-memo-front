@@ -9,8 +9,8 @@ smart-memo-tailwind/
 ├── backend
 │   └── server.js
 ├── electron
-│   ├── main.js
-│   └── preload.js
+│   ├── main.cjs
+│   └── preload.cjs
 ├── frontend
 │   ├── assets
 │   ├── components
@@ -22,7 +22,6 @@ smart-memo-tailwind/
 │   ├── index.css
 │   └── main.jsx
 ├── public
-├── .gitignore
 ├── eslint.config.js
 ├── index.html
 ├── package.json
@@ -35,36 +34,6 @@ smart-memo-tailwind/
 ---
 
 # 文件内容
-
-## `.gitignore`
-
-```
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-```
 
 ## `backend/server.js`
 
@@ -88,92 +57,70 @@ app.listen(PORT, () => {
 
 ```
 
-## `electron/main.js`
+## `electron/main.cjs`
 
-```javascript
-// electron/main.js
-import { app, BrowserWindow, ipcMain } from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
+```
+// electron/main.cjs
 
-// 获取当前文件的目录名
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// 使用 CommonJS 的 "require" 语法，这对于 .cjs 文件是100%正确的
+const { app, BrowserWindow, ipcMain } = require("electron");
+const path = require("path");
 
-// 获取项目版本号的逻辑
-import fs from "fs";
-const pkg = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8")
-);
-const appVersion = pkg.version;
+// 从应用自身获取版本号 (专业方式)
+const appVersion = app.getVersion();
 
 function createWindow() {
-  // 创建浏览器窗口
   const win = new BrowserWindow({
     width: 1024,
     height: 768,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      // __dirname 在 .cjs 文件中可以直接使用，非常可靠
+      preload: path.join(__dirname, "preload.cjs"),
     },
+    // icon: path.join(__dirname, 'icon.ico') // 同样，图标路径也是安全的
   });
 
-  // --- 主要修改在这里 ---
-  // 我们直接指定 Vite 开发服务器的地址
-  // wait-on 脚本保证了此时 http://localhost:5173 已经可用
   const devUrl = "http://localhost:5173";
-
-  // 判断是开发环境还是生产环境
-  // process.defaultApp 是一个在开发时（通过 `electron .` 启动）为 true 的标志
   const isDev = process.defaultApp;
 
   if (isDev) {
-    // 开发环境下，加载 Vite 开发服务器的 URL
     win.loadURL(devUrl);
-    // 自动打开开发者工具，方便调试
     win.webContents.openDevTools();
   } else {
-    // 生产环境下，加载打包好的 index.html 文件
     win.loadFile(path.join(__dirname, "../dist/index.html"));
   }
 
-  // (可选) 移除顶部的菜单栏，让应用更像一个原生App
   win.setMenu(null);
 }
 
-// Electron 应用准备就绪后，创建窗口
 app.whenReady().then(createWindow);
 
-// 当所有窗口都关闭时退出应用
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
 });
 
-// 在 macOS 上，当点击 dock 图标并且没有其他窗口打开时，重新创建一个窗口
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
 
-// IPC 通信部分保持不变
 ipcMain.handle("get-version", () => {
-  console.log("主进程收到了渲染进程的请求，正在返回版本号...");
+  console.log("主进程收到请求，正在返回版本号...");
   return appVersion;
 });
 
 ```
 
-## `electron/preload.js`
+## `electron/preload.cjs`
 
-```javascript
-// electron/preload.js
-import { contextBridge, ipcRenderer } from "electron";
-// 在 window 对象上暴露一个安全的 api
-// 这样你的 React 应用就可以通过 window.api.getVersion() 来调用
+```
+// electron/preload.cjs
+const { contextBridge, ipcRenderer } = require("electron");
+
 contextBridge.exposeInMainWorld("api", {
-  // 定义一个 getVersion 函数，它会触发我们刚刚在 main.js 中定义的 'get-version' 事件
   getVersion: () => ipcRenderer.invoke("get-version"),
 });
 
@@ -226,31 +173,12 @@ function App() {
   const [memos, setMemos] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [editingMemo, setEditingMemo] = useState(null);
-  const [version, setVersion] = useState("加载中...");
+  // 1. 初始状态设为 null，表示还没有获取版本号
+  const [version, setVersion] = useState(null);
   const isMounted = useRef(false);
 
+  // 这个 useEffect 现在只负责从 localStorage 加载备忘录，职责更单一
   useEffect(() => {
-    // 👇 这是主要改动！
-    // 不再使用 fetch，而是调用 preload 脚本暴露的 API
-    const getVersionFromElectron = async () => {
-      // 检查 api 是否存在，这样代码在普通浏览器中也不会报错
-      if (window.api && typeof window.api.getVersion === "function") {
-        try {
-          const appVersion = await window.api.getVersion();
-          setVersion(appVersion);
-        } catch (error) {
-          console.error("获取版本号失败:", error);
-          setVersion("获取失败");
-        }
-      } else {
-        // 如果不在 Electron 环境中，可以给一个提示
-        setVersion("非桌面版");
-      }
-    };
-
-    getVersionFromElectron();
-
-    // 下面的逻辑保持不变
     if (!isMounted.current) {
       isMounted.current = true;
       try {
@@ -268,8 +196,24 @@ function App() {
     }
   }, [memos]);
 
-  // ... App.jsx 中其他的函数 (handleFormSubmit, deleteMemo 等) 保持不变 ...
+  // 2. 创建一个专门用于处理按钮点击的函数
+  const handleFetchVersion = async () => {
+    // 3. 把获取版本的逻辑从 useEffect 移动到这里
+    if (window.api && typeof window.api.getVersion === "function") {
+      try {
+        setVersion("加载中..."); // 可以在点击后给一个即时反馈
+        const appVersion = await window.api.getVersion();
+        setVersion(appVersion);
+      } catch (error) {
+        console.error("获取版本号失败:", error);
+        setVersion("获取失败");
+      }
+    } else {
+      setVersion("非桌面版");
+    }
+  };
 
+  // ... App.jsx 中其他的函数 (handleFormSubmit, deleteMemo 等) 保持不变 ...
   const handleFormSubmit = (memoData) => {
     if (editingMemo) {
       setMemos(
@@ -288,7 +232,6 @@ function App() {
       setMemos([newMemo, ...memos]);
     }
   };
-
   const deleteMemo = (id) => setMemos(memos.filter((memo) => memo.id !== id));
   const toggleImportant = (id) =>
     setMemos(
@@ -296,7 +239,6 @@ function App() {
         memo.id === id ? { ...memo, isImportant: !memo.isImportant } : memo
       )
     );
-
   const filteredMemos = memos.filter(
     (memo) =>
       (memo.title?.toLowerCase() || "").includes(searchTerm.toLowerCase()) ||
@@ -311,8 +253,18 @@ function App() {
         </h1>
       </header>
       <main className="max-w-4xl mx-auto p-4 md:p-6">
-        <div className="mb-6 text-sm text-gray-500">
-          <span>当前版本：{version}</span>
+        {/* 4. 重新添加按钮，并添加条件渲染来显示版本号 */}
+        <div className="mb-6 flex gap-4 items-center">
+          <button
+            onClick={handleFetchVersion}
+            className="px-4 py-2 bg-green-600 text-white font-semibold rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition"
+          >
+            获取项目版本
+          </button>
+          {/* 这个语法的意思是：当 version 有值 (不为 null) 时，才渲染后面的 <span> */}
+          {version && (
+            <span className="text-gray-700">当前版本：{version}</span>
+          )}
         </div>
 
         <MemoForm
@@ -500,13 +452,16 @@ createRoot(document.getElementById("root")).render(
 {
   "name": "smart-memo-desktop",
   "private": true,
-  "version": "1.0.0",
-  "main": "electron/main.js",
+  "version": "1.0.4",
+  "description": "A smart memo application for your desktop.",
+  "author": "Your Name",
+  "homepage": "./",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "start": "concurrently \"npm run server\" \"npm run dev\"",
     "dev": "vite",
-    "server": "node backend/server.js",
+    "server": "node backend/server.cjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -553,7 +508,8 @@ createRoot(document.getElementById("root")).render(
     },
     "mac": {
       "target": "dmg"
-    }
+    },
+    "publish": null
   }
 }
 
@@ -611,6 +567,7 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 export default defineConfig({
+  base: "./", // 告诉 Vite 使用相对路径
   plugins: [react()],
   define: {
     "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV),
