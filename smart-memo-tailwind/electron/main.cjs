@@ -1,25 +1,21 @@
 // electron/main.cjs
-const { app, BrowserWindow, ipcMain, session } = require("electron");
-const path = require("path");
-const fs = require("fs");
 
-const pkg = JSON.parse(
-  fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8")
-);
-const appVersion = pkg.version;
+// 使用 CommonJS 的 "require" 语法，这对于 .cjs 文件是100%正确的
+const { app, BrowserWindow, ipcMain } = require("electron");
+const path = require("path");
+
+// 从应用自身获取版本号 (专业方式)
+const appVersion = app.getVersion();
 
 function createWindow() {
-  const preloadPath = path.join(__dirname, "preload.cjs"); // 👈 注意后缀名
-  console.log(`[主进程] 正在加载 Preload 脚本, 路径: ${preloadPath}`);
-
   const win = new BrowserWindow({
     width: 1024,
     height: 768,
     webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
+      // __dirname 在 .cjs 文件中可以直接使用，非常可靠
+      preload: path.join(__dirname, "preload.cjs"),
     },
+    // icon: path.join(__dirname, 'icon.ico') // 同样，图标路径也是安全的
   });
 
   const devUrl = "http://localhost:5173";
@@ -27,7 +23,7 @@ function createWindow() {
 
   if (isDev) {
     win.loadURL(devUrl);
-    //win.webContents.openDevTools();
+    win.webContents.openDevTools();
   } else {
     win.loadFile(path.join(__dirname, "../dist/index.html"));
   }
@@ -35,19 +31,7 @@ function createWindow() {
   win.setMenu(null);
 }
 
-app.whenReady().then(() => {
-  // if (process.defaultApp) {
-  //   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-  //     callback({
-  //       responseHeaders: {
-  //         ...details.responseHeaders,
-  //         "Content-Security-Policy": ["script-src 'self' 'unsafe-inline'"],
-  //       },
-  //     });
-  //   });
-  // }
-  createWindow();
-});
+app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -62,6 +46,6 @@ app.on("activate", () => {
 });
 
 ipcMain.handle("get-version", () => {
-  console.log("[主进程] 收到了渲染进程的请求，正在返回版本号...");
+  console.log("主进程收到请求，正在返回版本号...");
   return appVersion;
 });

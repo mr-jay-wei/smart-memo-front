@@ -1,7 +1,10 @@
 {
   "name": "smart-memo-desktop",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.4",
+  "description": "A smart memo application for your desktop.",
+  "author": "Your Name",
+  "homepage": "./",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -54,6 +57,7 @@
     },
     "mac": {
       "target": "dmg"
-    }
+    },
+    "publish": null
   }
 }
